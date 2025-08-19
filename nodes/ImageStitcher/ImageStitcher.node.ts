@@ -92,6 +92,33 @@ export class ImageStitcher implements INodeType {
 				default: 'left',
 			},
 			{
+				displayName: 'Normalize Width',
+				name: 'normalizeWidth',
+				type: 'boolean',
+				default: true,
+				description: 'Whether to resize all images to the same width to avoid side gaps',
+			},
+			{
+				displayName: 'Target Width',
+				name: 'targetWidth',
+				type: 'number',
+				default: 0,
+				description: 'If > 0, use this width; otherwise the widest image width is used',
+				displayOptions: {
+					show: { normalizeWidth: [true] },
+				},
+			},
+			{
+				displayName: 'Allow Upscale',
+				name: 'allowUpscale',
+				type: 'boolean',
+				default: true,
+				description: 'Whether to allow enlarging smaller images to the target width',
+				displayOptions: {
+					show: { normalizeWidth: [true] },
+				},
+			},
+			{
 				displayName: 'Background Color',
 				name: 'backgroundColor',
 				type: 'color',
@@ -186,6 +213,9 @@ export class ImageStitcher implements INodeType {
 				const sourceKeysParam = this.getNodeParameter('sourceKeys', itemIndex, '') as unknown;
 				const spacing = this.getNodeParameter('spacing', itemIndex, 0) as number;
 				const alignment = this.getNodeParameter('alignment', itemIndex, 'left') as Alignment;
+				const normalizeWidth = this.getNodeParameter('normalizeWidth', itemIndex, true) as boolean;
+				const targetWidthParam = this.getNodeParameter('targetWidth', itemIndex, 0) as number;
+				const allowUpscale = this.getNodeParameter('allowUpscale', itemIndex, true) as boolean;
 				const backgroundColor = this.getNodeParameter('backgroundColor', itemIndex, 'transparent') as string;
 				const format = this.getNodeParameter('format', itemIndex, 'png') as 'png' | 'jpeg' | 'webp';
 				const quality = this.getNodeParameter('quality', itemIndex, 80) as number;
@@ -243,7 +273,25 @@ export class ImageStitcher implements INodeType {
 					dimensions.push({ width: meta.width, height: meta.height });
 				}
 
-				const canvasWidth = Math.max(...dimensions.map((d) => d.width));
+				// Determine target width and optionally normalize image widths
+				let canvasWidth = Math.max(...dimensions.map((d) => d.width));
+				const targetWidth = normalizeWidth
+					? (targetWidthParam && targetWidthParam > 0 ? targetWidthParam : canvasWidth)
+					: canvasWidth;
+
+				if (normalizeWidth) {
+					for (let i = 0; i < imageBuffers.length; i++) {
+						if (dimensions[i].width !== targetWidth) {
+							const { data, info } = await sharp(imageBuffers[i])
+								.resize({ width: targetWidth, withoutEnlargement: !allowUpscale })
+								.toBuffer({ resolveWithObject: true });
+							imageBuffers[i] = data;
+							dimensions[i] = { width: info.width, height: info.height };
+						}
+					}
+					canvasWidth = targetWidth;
+				}
+
 				const canvasHeight = dimensions.reduce((acc, d) => acc + d.height, 0) + Math.max(0, (keys.length - 1) * spacing);
 
 				const bg = parseBackgroundColor(backgroundColor);
