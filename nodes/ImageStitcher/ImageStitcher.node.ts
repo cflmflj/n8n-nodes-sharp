@@ -183,7 +183,7 @@ export class ImageStitcher implements INodeType {
 		for (let itemIndex = 0; itemIndex < items.length; itemIndex++) {
 			try {
 				const sourceBucket = this.getNodeParameter('sourceBucket', itemIndex, '') as string;
-				const sourceKeysRaw = (this.getNodeParameter('sourceKeys', itemIndex, '') as string) || '';
+				const sourceKeysParam = this.getNodeParameter('sourceKeys', itemIndex, '') as unknown;
 				const spacing = this.getNodeParameter('spacing', itemIndex, 0) as number;
 				const alignment = this.getNodeParameter('alignment', itemIndex, 'left') as Alignment;
 				const backgroundColor = this.getNodeParameter('backgroundColor', itemIndex, 'transparent') as string;
@@ -194,10 +194,34 @@ export class ImageStitcher implements INodeType {
 				const outputBinary = this.getNodeParameter('outputBinary', itemIndex, true) as boolean;
 				const binaryPropertyName = this.getNodeParameter('binaryPropertyName', itemIndex, 'data') as string;
 
-				const keys = sourceKeysRaw
-					.split(/\r?\n|,/)
-					.map((s) => s.trim())
-					.filter((s) => s.length > 0);
+				let keys: string[] = [];
+				if (Array.isArray(sourceKeysParam)) {
+					keys = sourceKeysParam
+						.map((k) => String(k))
+						.map((s) => s.trim())
+						.filter((s) => s.length > 0);
+				} else if (typeof sourceKeysParam === 'string') {
+					keys = sourceKeysParam
+						.split(/\r?\n|,/)
+						.map((s) => s.trim())
+						.filter((s) => s.length > 0);
+				} else if (
+					sourceKeysParam &&
+					typeof sourceKeysParam === 'object' &&
+					Array.isArray((sourceKeysParam as any).keys)
+				) {
+					// Fallback: if an object with a `keys` array was provided
+					keys = (sourceKeysParam as any).keys
+						.map((k: unknown) => String(k))
+						.map((s: string) => s.trim())
+						.filter((s: string) => s.length > 0);
+				} else if (sourceKeysParam != null) {
+					// Last resort: coerce to string and parse
+					keys = String(sourceKeysParam)
+						.split(/\r?\n|,/)
+						.map((s) => s.trim())
+						.filter((s) => s.length > 0);
+				}
 
 				if (!sourceBucket) {
 					throw new NodeOperationError(this.getNode(), 'Source bucket is required', { itemIndex });
